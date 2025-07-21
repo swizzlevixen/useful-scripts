@@ -1,0 +1,43 @@
+# Crop and Print 4x6" labels
+
+These macOS-based scripts take an existing PDF with too much white space, and try to crop it to the smallest amount of space, checking that the result should be a roughly 4x6" shipping label. If the cropped label is the correct size, it will then automatically print it on a 4x6 label printer. This works great for PDF labels from Poshmark, for which this was originally designed.
+
+The script is not smart about it at all; just stripping out all of the white space around the label. If there is stuff other than the label in the PDF (text instructions, etc.), it will fail to crop properly, and instead of printing, it will open the attempted crop PDF in Preview.app for further manual intervention.
+
+## Installation
+
+You will need to install some command line tool dependencies with Homebrew:
+
+```
+brew install ps2eps ghostscript xpdf
+```
+
+Getting these installed properly is a bit of a pain in the ass, and I won't be covering that here.
+
+## Shell script usage
+
+I am printing to a Dymo LabelWriter 4XL. You will likely need to change line ~92 to use your correct printer name:
+
+```shell
+lpr -P DYMO_LabelWriter_4XL "${name}_cropped.pdf"
+```
+
+You can use the shell script on its own, like so:
+
+```shell
+./crop_pdf_and_print_label.sh <path_to_pdf_file>
+```
+
+I recommend making sure this works from the command line before installing the AppleScript.
+
+## Mail AppleScript Usage
+
+The AppleScript `Crop and Print 4x6 PDF label attachment.scpt` assumes the shell script is installed in `~/Applications/`; otherwise you will need to change this line to reference where you put the script:
+
+```AppleScript
+do shell script "~/Applications/crop_pdf_and_print_label.sh " & thePath
+```
+
+Install this AppleScript in `~/Library/Scripts/Applications/Mail/` so that the script appears in the Script Menu when using the Mail app. (If you don't see the Script Menu in your menu bar, [check out these instructions](https://support.apple.com/guide/script-editor/access-scripts-using-the-script-menu-scpedt27975/mac).)
+
+Select the Mail message(s) with PDF attachments that you wish to process, and select **Crop and Print 4x6 PDF label attachment** from the Script Menu. It runs the shell script in the background, and provides a nice interface for any errors.
