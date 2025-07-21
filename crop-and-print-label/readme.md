@@ -1,8 +1,8 @@
-# Crop and Print 4x6" labels
+# Crop and Print 4×6" labels
 
-These macOS-based scripts take an existing PDF with too much white space, and try to crop it to the smallest amount of space, checking that the result should be a roughly 4x6" shipping label. If the cropped label is the correct size, it will then automatically print it on a 4x6 label printer.
+These macOS-based scripts take an existing PDF with too much white space, and try to crop it to the smallest amount of space, checking that the result should be a roughly 4×6" shipping label. If the cropped label is the correct size, it will then automatically print it on a 4×6 label printer.
 
-This works great for PDF labels from Poshmark, for which this was originally designed. It might also work well for other $x6 shipping and return labels that you might get from various online stores. Let me know how it goes!
+This works great for PDF labels from Poshmark, for which this was originally designed. It might also work well for other 4×6" shipping and return labels that you might get from various online stores. Let me know how it goes!
 
 The script is not smart about the crop at all; just stripping out all of the white space around the label. If there is stuff other than the label in the PDF (text instructions, etc.), it will fail to crop properly, and instead of printing, it will open the attempted crop PDF in Preview.app for further manual intervention.
 
