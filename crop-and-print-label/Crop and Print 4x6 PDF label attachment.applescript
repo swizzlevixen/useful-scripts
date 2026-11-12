@@ -11,7 +11,7 @@
 --      Mail calls the "perform mail action" handler with the matching messages;
 --      results are reported with notifications, since a rule can't block Mail with a dialog.
 --
--- Each PDF attachment is saved to the temporary folder and handed to the shell script,
+-- Each PDF attachment is saved under ~/Library/Application Support/Mail/ and handed to the shell script,
 -- which finds the 4x6" label on the page, crops to it, and prints it. If no label is
 -- found, the shell script opens its best-effort crop in Preview for manual handling.
 
@@ -23,7 +23,7 @@ on run
 	try
 		tell application "Mail" to set theMessages to the selection
 		if (count of theMessages) < 1 then error "One or more messages must be selected."
-		set theReport to my processMessages(theMessages)
+		set theReport to my processMessages(theMessages, false)
 		my showReport(theReport, true)
 	on error errMsg number errNum
 		if errNum is not -128 then -- -128 is User Canceled
@@ -37,7 +37,7 @@ end run
 using terms from application "Mail"
 	on perform mail action with messages theMessages for rule theRule
 		try
-			set theReport to my processMessages(theMessages)
+			set theReport to my processMessages(theMessages, true)
 			my showReport(theReport, false)
 		on error errMsg number errNum
 			display notification errMsg with title "Crop and Print 4x6 Label" subtitle "Error " & (errNum as string)
@@ -46,12 +46,14 @@ using terms from application "Mail"
 end using terms from
 
 -- Save each PDF attachment and run the shell script on it.
--- Returns {pdfs:n, printed:{names}, notFound:{names}, failed:{names & reasons}}
-on processMessages(theMessages)
+-- waitForDownload: true from a rule, where the message may still be downloading.
+-- Returns {pdfs:n, printed:{names}, notFound:{names}, failed:{names & reasons}, waited:seconds}
+on processMessages(theMessages, waitForDownload)
 	set printedList to {}
 	set notFoundList to {}
 	set failedList to {}
 	set pdfCount to 0
+	set totalWaited to 0
 	-- Save attachments under ~/Library/Application Support/Mail/, not Mail's sandbox temp
 	-- folder: when a rule runs, the shell script and Ghostscript are children of the
 	-- script runner and get "Operation not permitted" reading inside Mail's container.
@@ -59,7 +61,12 @@ on processMessages(theMessages)
 	set theFolder to (POSIX path of (path to application support from user domain)) & "Mail/Crop and Print 4x6 Label/"
 	do shell script "mkdir -p " & quoted form of theFolder
 	tell application "Mail"
-		repeat with theMessage in theMessages
+		repeat with aMessage in theMessages
+			set theMessage to aMessage
+			if waitForDownload then
+				set {theMessage, waited} to my waitForAttachments(aMessage)
+				set totalWaited to totalWaited + waited
+			end if
 			repeat with theAttachment in mail attachments of theMessage
 				set attName to name of theAttachment
 				set isPDF to false
@@ -89,8 +96,40 @@ on processMessages(theMessages)
 			end repeat
 		end repeat
 	end tell
-	return {pdfs:pdfCount, printed:printedList, notFound:notFoundList, failed:failedList}
+	return {pdfs:pdfCount, printed:printedList, notFound:notFoundList, failed:failedList, waited:totalWaited}
 end processMessages
+
+-- Mail runs a rule as soon as a message's headers arrive, which can be before the
+-- IMAP body fetch (and with it the attachment list) has finished. On 2026-11-11 the
+-- rule script started six seconds before Mail logged the body as downloaded, saw a
+-- message with no attachments at all, and nothing printed. So, from a rule, wait for
+-- the attachments to appear and finish downloading, up to about two minutes.
+-- Re-fetches the message by id each time so the check isn't made on a stale object.
+-- Returns {theMessage, secondsWaited}.
+on waitForAttachments(theMessage)
+	set waited to 0
+	tell application "Mail"
+		set theBox to mailbox of theMessage
+		set theID to id of theMessage
+		repeat 60 times
+			set ready to false
+			try
+				set theMessage to (first message of theBox whose id is theID)
+				set theAttachments to mail attachments of theMessage
+				if (count of theAttachments) > 0 then
+					set ready to true
+					repeat with a in theAttachments
+						if not (downloaded of a) then set ready to false
+					end repeat
+				end if
+			end try
+			if ready then exit repeat
+			delay 2
+			set waited to waited + 2
+		end repeat
+	end tell
+	return {theMessage, waited}
+end waitForAttachments
 
 -- Mail may still be writing a saved attachment when "save" returns. Wait until the
 -- file exists and its size has stopped changing (up to about 10 seconds).
@@ -143,6 +182,7 @@ on showReport(theReport, interactive)
 			display notification (f as string) with title theTitle subtitle "Failed"
 			my logLine("FAILED " & (f as string))
 		end repeat
+		if (waited of theReport) > 0 then my logLine("Waited " & ((waited of theReport) as string) & " s for Mail to download the attachments.")
 		if (pdfs of theReport) is 0 then my logLine("Rule fired; no PDF attachments.")
 	end if
 end showReport
